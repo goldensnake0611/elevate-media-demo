@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 
 export function safeJsonParse<T>(value: string | null): T | null {
   if (!value) return null
@@ -22,12 +22,6 @@ function emitKey(key: string) {
 }
 
 export function useLocalStorageState<T>(key: string, initialValue: T) {
-  const getSnapshot = useCallback((): T => {
-    if (typeof window === 'undefined') return initialValue
-    const parsed = safeJsonParse<T>(localStorage.getItem(key))
-    return parsed !== null ? parsed : initialValue
-  }, [initialValue, key])
-
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
       if (typeof window === 'undefined') return () => {}
@@ -47,18 +41,33 @@ export function useLocalStorageState<T>(key: string, initialValue: T) {
     [key]
   )
 
-  const value = useSyncExternalStore(subscribe, getSnapshot, () => initialValue)
+  const getSnapshot = useCallback((): string | null => {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem(key)
+  }, [key])
+
+  const raw = useSyncExternalStore(subscribe, getSnapshot, () => null)
+
+  const value = useMemo(() => {
+    const parsed = safeJsonParse<T>(raw)
+    return parsed !== null ? parsed : initialValue
+  }, [initialValue, raw])
 
   const setValue = useCallback(
     (next: T | ((prev: T) => T)) => {
-      const prev = getSnapshot()
+      const prevRaw = typeof window === 'undefined' ? null : localStorage.getItem(key)
+      const prevParsed = safeJsonParse<T>(prevRaw)
+      const prev = prevParsed !== null ? prevParsed : initialValue
       const resolved = typeof next === 'function' ? (next as (p: T) => T)(prev) : next
+      const nextRaw = JSON.stringify(resolved)
       try {
-        localStorage.setItem(key, JSON.stringify(resolved))
+        if (typeof window === 'undefined') return
+        if (prevRaw === nextRaw) return
+        localStorage.setItem(key, nextRaw)
       } catch {}
       emitKey(key)
     },
-    [getSnapshot, key]
+    [initialValue, key]
   )
 
   return { value, setValue }
