@@ -8,7 +8,7 @@ import SectionHeader from '@/components/SectionHeader'
 import Badge from '@/components/Badge'
 import { useAuth } from '@/lib/auth'
 import { useDemoDb } from '@/lib/db'
-import { downloadCsv, printPdf } from '@/lib/export'
+import { createPdfBlob, downloadCsv } from '@/lib/export'
 
 function money(n: number) {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -118,10 +118,41 @@ export default function ClientProfilePage() {
               type="button"
               className="inline-flex items-center gap-2 rounded-xl border bg-[var(--panel-strong)] px-3 py-2 text-sm hover:bg-white/8"
               onClick={() => {
-                const html = `<h1>${client.name} — Payment History</h1><table><thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Method</th><th>Memo</th></tr></thead><tbody>${payments
-                  .map(p => `<tr><td>${p.date}</td><td>${money(p.amount)}</td><td>${p.status}</td><td>${p.method}</td><td>${p.memo ?? ''}</td></tr>`)
-                  .join('')}</tbody></table>`
-                printPdf('Payments', html)
+                const w = window.open('', '_blank', 'noopener,noreferrer')
+                if (w) {
+                  w.document.open()
+                  w.document.write('<!doctype html><title>Generating…</title><body style="font-family:system-ui;margin:24px">Generating PDF…</body>')
+                  w.document.close()
+                }
+
+                const lines = [
+                  `Client: ${client.name}`,
+                  `Plan: ${client.plan}`,
+                  '',
+                  'Payments:',
+                  ...payments.map(p => `- ${p.date} · ${money(p.amount)} · ${p.status} · ${p.method}${p.memo ? ` · ${p.memo}` : ''}`),
+                ]
+
+                const filename = `${client.name.replace(/\s+/g, '_')}_payments.pdf`
+                createPdfBlob({ title: `${client.name} — Payment History`, lines })
+                  .then(blob => {
+                    const url = URL.createObjectURL(blob)
+                    if (w) w.location.href = url
+                    else {
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = filename
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      window.location.href = url
+                    }
+                    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+                  })
+                  .catch(() => {
+                    if (w) w.close()
+                    alert('PDF export failed. Please allow pop-ups and try again.')
+                  })
               }}
             >
               <Download size={16} /> PDF

@@ -27,6 +27,44 @@ export function downloadCsv(filename: string, rows: Array<Record<string, unknown
   URL.revokeObjectURL(url)
 }
 
+export async function createPdfBlob(params: { title: string; lines: string[] }) {
+  const { PDFDocument, StandardFonts } = await import('pdf-lib')
+
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+
+  const pageWidth = 595.28
+  const pageHeight = 841.89
+  const margin = 48
+  const titleSize = 18
+  const bodySize = 11
+  const lineHeight = 16
+
+  let page = doc.addPage([pageWidth, pageHeight])
+  let y = pageHeight - margin
+
+  const drawLine = (text: string, bold = false) => {
+    const useFont = bold ? fontBold : font
+    page.drawText(text, { x: margin, y, size: bold ? titleSize : bodySize, font: useFont })
+    y -= bold ? titleSize + 14 : lineHeight
+  }
+
+  drawLine(params.title, true)
+
+  for (const line of params.lines) {
+    if (y < margin + lineHeight) {
+      page = doc.addPage([pageWidth, pageHeight])
+      y = pageHeight - margin
+    }
+    drawLine(line)
+  }
+
+  const bytes = await doc.save()
+  const safeBytes = new Uint8Array(bytes)
+  return new Blob([safeBytes], { type: 'application/pdf' })
+}
+
 export function printPdf(title: string, html: string) {
   const w = window.open('', '_blank', 'noopener,noreferrer')
   if (!w) return
@@ -42,4 +80,3 @@ export function printPdf(title: string, html: string) {
   w.focus()
   w.print()
 }
-

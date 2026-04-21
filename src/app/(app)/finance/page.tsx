@@ -6,7 +6,7 @@ import SectionHeader from '@/components/SectionHeader'
 import Badge from '@/components/Badge'
 import RoleGuard from '@/components/RoleGuard'
 import { useDemoDb } from '@/lib/db'
-import { downloadCsv, printPdf } from '@/lib/export'
+import { createPdfBlob, downloadCsv } from '@/lib/export'
 
 function money(n: number) {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -48,12 +48,56 @@ export default function FinancePage() {
                 type="button"
                 className="inline-flex items-center gap-2 rounded-xl border bg-[var(--panel-strong)] px-3 py-2 text-sm hover:bg-white/8"
                 onClick={() => {
-                  const html = `<h1>Finance Summary</h1><table><tbody>
-                    <tr><th>Monthly revenue projection</th><td>${money(monthlyRevenueProjection)}</td></tr>
-                    <tr><th>Monthly expenses</th><td>${money(monthlyExpenses)}</td></tr>
-                    <tr><th>Pending contractor payments</th><td>${money(contractorLiability)}</td></tr>
-                  </tbody></table>`
-                  printPdf('Finance Summary', html)
+                  const w = window.open('', '_blank', 'noopener,noreferrer')
+                  if (w) {
+                    w.document.open()
+                    w.document.write('<!doctype html><title>Generating…</title><body style="font-family:system-ui;margin:24px">Generating PDF…</body>')
+                    w.document.close()
+                  }
+
+                  const lines = [
+                    `Monthly revenue projection: ${money(monthlyRevenueProjection)}`,
+                    `Expenses (month to date): ${money(monthlyExpenses)}`,
+                    `Pending contractor payments: ${money(contractorLiability)}`,
+                    '',
+                    'Payment tracker (by client):',
+                    ...byClient.map(row => {
+                      const parts = [
+                        row.client.name,
+                        `Paid ${money(row.paid)}`,
+                        row.pending > 0 ? `Pending ${money(row.pending)}` : 'Pending —',
+                        row.overdue > 0 ? `Overdue ${money(row.overdue)}` : 'Overdue —',
+                        `Next invoice ${row.client.nextInvoiceDate}`,
+                      ]
+                      return `- ${parts.join(' · ')}`
+                    }),
+                    '',
+                    'Expenses:',
+                    ...db.expenses.map(e => `- ${e.date} · ${e.category} · ${e.vendor} · ${money(e.amount)}`),
+                    '',
+                    'Contractor payments:',
+                    ...db.contractorPayments.map(p => `- ${p.date} · ${p.contractor} · ${money(p.amount)} · ${p.status}`),
+                  ]
+
+                  createPdfBlob({ title: 'Finance Summary', lines })
+                    .then(blob => {
+                      const url = URL.createObjectURL(blob)
+                      if (w) w.location.href = url
+                      else {
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = 'finance_summary.pdf'
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        window.location.href = url
+                      }
+                      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+                    })
+                    .catch(() => {
+                      if (w) w.close()
+                      alert('PDF export failed. Please allow pop-ups and try again.')
+                    })
                 }}
               >
                 <Download size={16} /> PDF
@@ -177,4 +221,3 @@ export default function FinancePage() {
     </RoleGuard>
   )
 }
-
