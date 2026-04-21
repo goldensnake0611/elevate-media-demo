@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Download, TrendingUp } from 'lucide-react'
 import SectionHeader from '@/components/SectionHeader'
 import Badge from '@/components/Badge'
@@ -14,6 +14,13 @@ function money(n: number) {
 
 export default function FinancePage() {
   const { db } = useDemoDb()
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    }
+  }, [pdfUrl])
 
   const byClient = useMemo(() => {
     return db.clients.map(c => {
@@ -48,13 +55,6 @@ export default function FinancePage() {
                 type="button"
                 className="inline-flex items-center gap-2 rounded-xl border bg-[var(--panel-strong)] px-3 py-2 text-sm hover:bg-white/8"
                 onClick={() => {
-                  const w = window.open('', '_blank', 'noopener,noreferrer')
-                  if (w) {
-                    w.document.open()
-                    w.document.write('<!doctype html><title>Generating…</title><body style="font-family:system-ui;margin:24px">Generating PDF…</body>')
-                    w.document.close()
-                  }
-
                   const lines = [
                     `Monthly revenue projection: ${money(monthlyRevenueProjection)}`,
                     `Expenses (month to date): ${money(monthlyExpenses)}`,
@@ -82,26 +82,34 @@ export default function FinancePage() {
                   createPdfBlob({ title: 'Finance Summary', lines })
                     .then(blob => {
                       const url = URL.createObjectURL(blob)
-                      if (w) w.location.href = url
-                      else {
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = 'finance_summary.pdf'
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                        window.location.href = url
-                      }
+                      setPdfUrl(prev => {
+                        if (prev) URL.revokeObjectURL(prev)
+                        return url
+                      })
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = 'finance_summary.pdf'
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
                       window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
                     })
                     .catch(() => {
-                      if (w) w.close()
-                      alert('PDF export failed. Please allow pop-ups and try again.')
+                      alert('PDF export failed. Please try again.')
                     })
                 }}
               >
                 <Download size={16} /> PDF
               </button>
+              {pdfUrl && (
+                <a
+                  href={pdfUrl}
+                  download="finance_summary.pdf"
+                  className="inline-flex items-center gap-2 rounded-xl border bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+                >
+                  <Download size={16} /> Download ready
+                </a>
+              )}
             </div>
           }
         />

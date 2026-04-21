@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, Download, MessageSquare, Pencil, Save } from 'lucide-react'
 import SectionHeader from '@/components/SectionHeader'
 import Badge from '@/components/Badge'
@@ -25,6 +25,7 @@ export default function ClientProfilePage() {
   const { db, updateDb, appendAudit } = useDemoDb()
   const [tab, setTab] = useState<Tab>('overview')
   const [isEditing, setIsEditing] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
 
   const client = db.clients.find(c => c.id === id)
 
@@ -38,6 +39,12 @@ export default function ClientProfilePage() {
     health: client?.health ?? 'green',
     notes: client?.notes ?? '',
   }))
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl)
+    }
+  }, [pdfUrl])
 
   if (!client) {
     return (
@@ -118,13 +125,6 @@ export default function ClientProfilePage() {
               type="button"
               className="inline-flex items-center gap-2 rounded-xl border bg-[var(--panel-strong)] px-3 py-2 text-sm hover:bg-white/8"
               onClick={() => {
-                const w = window.open('', '_blank', 'noopener,noreferrer')
-                if (w) {
-                  w.document.open()
-                  w.document.write('<!doctype html><title>Generating…</title><body style="font-family:system-ui;margin:24px">Generating PDF…</body>')
-                  w.document.close()
-                }
-
                 const lines = [
                   `Client: ${client.name}`,
                   `Plan: ${client.plan}`,
@@ -137,26 +137,34 @@ export default function ClientProfilePage() {
                 createPdfBlob({ title: `${client.name} — Payment History`, lines })
                   .then(blob => {
                     const url = URL.createObjectURL(blob)
-                    if (w) w.location.href = url
-                    else {
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = filename
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                      window.location.href = url
-                    }
+                    setPdfUrl(prev => {
+                      if (prev) URL.revokeObjectURL(prev)
+                      return url
+                    })
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = filename
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
                     window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
                   })
                   .catch(() => {
-                    if (w) w.close()
-                    alert('PDF export failed. Please allow pop-ups and try again.')
+                    alert('PDF export failed. Please try again.')
                   })
               }}
             >
               <Download size={16} /> PDF
             </button>
+            {pdfUrl && (
+              <a
+                href={pdfUrl}
+                download={`${client.name.replace(/\s+/g, '_')}_payments.pdf`}
+                className="inline-flex items-center gap-2 rounded-xl border bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+              >
+                <Download size={16} /> Download ready
+              </a>
+            )}
             {!isEditing ? (
               <button
                 type="button"
